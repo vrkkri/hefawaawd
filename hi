@@ -15,6 +15,7 @@ do
 		UnNamedFlags = 0;
 		ThemeObjects = {};
 		Instances = {};
+		FadeMemory = setmetatable({}, {__mode = "k"});
 		Holder = nil;
 		PageHolder = nil;
 		Gradient = nil;
@@ -263,34 +264,67 @@ do
 					Library.Holder.Visible = true
 				end
 
+				local TweenService = game:GetService("TweenService")
+				local Info = TweenInfo.new(0.25, Enum.EasingStyle.Linear, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In)
+				local HideQueued = false
+				--
 				for _,v in next, Library.Instances do
-					if v:IsA("Frame") or v:IsA("TextButton") then
-						if v.BackgroundTransparency ~= 1 then
-							task.spawn(function()
-								local t = game:GetService("TweenService"):Create(v, TweenInfo.new(0.25, Enum.EasingStyle.Linear, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In), {BackgroundTransparency = bool and (v.Name == "Accent" and v.BackgroundTransparency or 0) or 0.95})
-								t.Completed:Connect(function()
-									if bool == false then
+					if typeof(v) == "Instance" and v.Parent then
+						-- each element's real look is saved the first time the menu closes and restored on open,
+						-- so accents (toggle fill, slider fill, selected section) come back as they were
+						local Memory = Library.FadeMemory[v]
+						if not Memory then
+							Memory = {}
+							if v:IsA("GuiObject") then
+								Memory.BackgroundTransparency = v.BackgroundTransparency
+							end
+							if v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
+								Memory.TextTransparency = v.TextTransparency
+							end
+							if v:IsA("ImageButton") or v:IsA("ImageLabel") then
+								Memory.ImageTransparency = v.ImageTransparency
+							end
+							if v:IsA("UIStroke") then
+								Memory.Transparency = v.Transparency
+							end
+							Library.FadeMemory[v] = Memory
+						end
+						--
+						local Goal = nil
+						if v:IsA("Frame") or v:IsA("TextButton") then
+							if Memory.BackgroundTransparency ~= 1 then
+								Goal = {BackgroundTransparency = bool and Memory.BackgroundTransparency or 0.95}
+							end
+						elseif v:IsA("TextLabel") or v:IsA("TextBox") then
+							if Memory.TextTransparency ~= 1 and Memory.BackgroundTransparency == 1 then
+								Goal = {TextTransparency = bool and Memory.TextTransparency or 0.95}
+							end
+						elseif v:IsA("UIStroke") then
+							Goal = {Transparency = bool and Memory.Transparency or 0.95}
+						elseif v:IsA("ImageButton") then
+							Goal = {
+								ImageTransparency = bool and Memory.ImageTransparency or 0.95,
+								BackgroundTransparency = bool and Memory.BackgroundTransparency or 0.95
+							}
+						end
+						--
+						if Goal then
+							local Tween = TweenService:Create(v, Info, Goal)
+							if not bool and not HideQueued then
+								HideQueued = true
+								Tween.Completed:Connect(function(State)
+									-- reopening mid-fade cancels this tween; don't hide the menu then
+									if State == Enum.PlaybackState.Completed and not Library.Open then
 										Library.Holder.Visible = false
 									end
 								end)
-								t:Play()
-							end)
+							end
+							Tween:Play()
 						end
-					elseif v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
-						if v.TextTransparency ~= 1 and v.BackgroundTransparency == 1 then
-							task.spawn(function()
-								game:GetService("TweenService"):Create(v, TweenInfo.new(0.25, Enum.EasingStyle.Linear, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In), {TextTransparency = bool and 0 or 0.95}):Play()
-							end)
-						end
-					elseif v:IsA("UIStroke") then
-						task.spawn(function()
-							game:GetService("TweenService"):Create(v, TweenInfo.new(0.25, Enum.EasingStyle.Linear, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In), {Transparency = bool and 0 or 0.95}):Play()
-						end)
-					elseif v:IsA("ImageButton") then
-						task.spawn(function()
-							game:GetService("TweenService"):Create(v, TweenInfo.new(0.25, Enum.EasingStyle.Linear, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In), {ImageTransparency = bool and 0 or 0.95, BackgroundTransparency = bool and 0 or 0.95}):Play()
-						end)
 					end
+				end
+				if not bool and not HideQueued then
+					Library.Holder.Visible = false
 				end
 				task.spawn(function()
 					game:GetService("TweenService"):Create(Library.PageHolder, TweenInfo.new(0.25, Enum.EasingStyle.Quad, bool and Enum.EasingDirection.Out or Enum.EasingDirection.In), {Position = bool and UDim2.new(0,60,0,0) or UDim2.new(0,0,0,0)}):Play()
@@ -1244,6 +1278,12 @@ do
                     Title.TextColor3 = Color3.fromRGB(78,78,78)
                 end
                 Accent.BackgroundTransparency = Section.Open and 0 or 0.5
+                if Library.FadeMemory[Accent] then
+                    Library.FadeMemory[Accent].BackgroundTransparency = Section.Open and 0 or 0.5
+                    if not Library.Open then
+                        Accent.BackgroundTransparency = 0.95
+                    end
+                end
             end;
 
 			Button.MouseButton1Click:Connect(function()
